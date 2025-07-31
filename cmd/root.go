@@ -45,6 +45,7 @@ var (
 	verbosity         int
 	pretty            bool
 	useSilentDataAuth bool
+	insecureSkipTLS   bool
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -111,6 +112,7 @@ func NewPolycliCommand() *cobra.Command {
 	cmd.PersistentFlags().IntVarP(&verbosity, "verbosity", "v", 500, "0 - Silent\n100 Panic\n200 Fatal\n300 Error\n400 Warning\n500 Info\n600 Debug\n700 Trace")
 	cmd.PersistentFlags().BoolVar(&pretty, "pretty-logs", true, "Should logs be in pretty format or JSON")
 	cmd.PersistentFlags().BoolVar(&useSilentDataAuth, "use-silent-data-auth", false, "Use Silent Data authentication headers (x-timestamp and x-signature) for all RPC requests")
+	cmd.PersistentFlags().BoolVar(&insecureSkipTLS, "insecure-skip-tls-verify", false, "Skip TLS certificate verification")
 
 	// Define local flags which will only run when this action is called directly.
 	cmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")

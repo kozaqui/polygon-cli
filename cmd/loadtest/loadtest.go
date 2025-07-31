@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	_ "embed"
 	"encoding/hex"
 	"encoding/json"
@@ -522,6 +523,14 @@ func runLoadTest(ctx context.Context, cmd *cobra.Command) error {
 		MaxIdleConnsPerHost: connLimit,
 		MaxConnsPerHost:     connLimit,
 	}
+	
+	if flag_loader.GetInsecureSkipTLSFlagValue(cmd) {
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		log.Debug().Msg("TLS certificate verification disabled (insecure mode)")
+	}
+	
 	if inputLoadTestParams.Proxy != nil && *inputLoadTestParams.Proxy != "" {
 		proxyURL, err := url.Parse(*inputLoadTestParams.Proxy)
 		if err != nil {
@@ -557,17 +566,16 @@ func runLoadTest(ctx context.Context, cmd *cobra.Command) error {
 		
 		useSilentDataAuth := flag_loader.GetSilentDataAuthFlagValue(cmd)
 		if useSilentDataAuth {
-			// Close the existing RPC client
 			rpc.Close()
 			
-			// Create new authenticated RPC client
-			authenticatedClient, authErr := util.CreateRPCClientWithSilentDataAuth(ctx, *inputLoadTestParams.RPCUrl, inputLoadTestParams.ECDSAPrivateKey)
+			insecureSkipTLS := flag_loader.GetInsecureSkipTLSFlagValue(cmd)
+			
+			authenticatedClient, authErr := util.CreateRPCClientWithSilentDataAuthAndTLS(ctx, *inputLoadTestParams.RPCUrl, inputLoadTestParams.ECDSAPrivateKey, insecureSkipTLS)
 			if authErr != nil {
 				log.Error().Err(authErr).Msg("Failed to create authenticated RPC client")
 				return authErr
 			}
 			
-			// Update rpc and ec to use the authenticated client
 			rpc = authenticatedClient
 			ec = ethclient.NewClient(rpc)
 			

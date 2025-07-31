@@ -3,6 +3,7 @@ package util
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -424,19 +425,56 @@ func CreateSilentDataHTTPClient(privateKey *ecdsa.PrivateKey, baseTransport http
 	}
 }
 
+// CreateSilentDataHTTPClientWithTLS creates an HTTP client with Silent Data authentication and optional insecure TLS
+func CreateSilentDataHTTPClientWithTLS(privateKey *ecdsa.PrivateKey, insecureSkipTLS bool) *http.Client {
+	baseTransport := http.DefaultTransport.(*http.Transport).Clone()
+	
+	if insecureSkipTLS {
+		baseTransport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		log.Debug().Msg("TLS certificate verification disabled (insecure mode)")
+	}
+	
+	authenticatedTransport := &SilentDataTransport{
+		PrivateKey: privateKey,
+		Transport:  baseTransport,
+	}
+	
+	return &http.Client{
+		Transport: authenticatedTransport,
+	}
+}
+
 // CreateRPCClientWithSilentDataAuth creates an RPC client with Silent Data authentication
 func CreateRPCClientWithSilentDataAuth(ctx context.Context, rpcURL string, privateKey *ecdsa.PrivateKey) (*ethrpc.Client, error) {
 	httpClient := CreateSilentDataHTTPClient(privateKey, nil)
 	rpcOption := ethrpc.WithHTTPClient(httpClient)
-	
+
 	rpc, err := ethrpc.DialOptions(ctx, rpcURL, rpcOption)
 	if err != nil {
 		return nil, fmt.Errorf("unable to dial RPC: %w", err)
 	}
-	
+
 	rpc.SetHeader("Accept-Encoding", "identity")
 	log.Info().Msg("Using Silent Data authentication headers")
-	
+
+	return rpc, nil
+}
+
+// CreateRPCClientWithSilentDataAuthAndTLS creates an RPC client with Silent Data authentication and optional insecure TLS
+func CreateRPCClientWithSilentDataAuthAndTLS(ctx context.Context, rpcURL string, privateKey *ecdsa.PrivateKey, insecureSkipTLS bool) (*ethrpc.Client, error) {
+	httpClient := CreateSilentDataHTTPClientWithTLS(privateKey, insecureSkipTLS)
+	rpcOption := ethrpc.WithHTTPClient(httpClient)
+
+	rpc, err := ethrpc.DialOptions(ctx, rpcURL, rpcOption)
+	if err != nil {
+		return nil, fmt.Errorf("unable to dial RPC: %w", err)
+	}
+
+	rpc.SetHeader("Accept-Encoding", "identity")
+	log.Info().Msg("Using Silent Data authentication headers")
+
 	return rpc, nil
 }
 
@@ -446,6 +484,16 @@ func CreateEthClientWithSilentDataAuth(ctx context.Context, rpcURL string, priva
 	if err != nil {
 		return nil, err
 	}
-	
+
+	return ethclient.NewClient(rpc), nil
+}
+
+// CreateEthClientWithSilentDataAuthAndTLS creates an Ethereum client with Silent Data authentication and optional insecure TLS
+func CreateEthClientWithSilentDataAuthAndTLS(ctx context.Context, rpcURL string, privateKey *ecdsa.PrivateKey, insecureSkipTLS bool) (*ethclient.Client, error) {
+	rpc, err := CreateRPCClientWithSilentDataAuthAndTLS(ctx, rpcURL, privateKey, insecureSkipTLS)
+	if err != nil {
+		return nil, err
+	}
+
 	return ethclient.NewClient(rpc), nil
 }

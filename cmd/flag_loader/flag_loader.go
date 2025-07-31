@@ -12,6 +12,7 @@ const (
 	rpcUrlFlagName, rpcUrlEnvVar               = "rpc-url", "ETH_RPC_URL"
 	privateKeyFlagName, privateKeyEnvVar       = "private-key", "PRIVATE_KEY"
 	silentDataAuthFlagName                     = "use-silent-data-auth"
+	insecureSkipTLSFlagName                    = "insecure-skip-tls-verify"
 )
 
 type BigIntValue struct {
@@ -55,6 +56,14 @@ func GetRequiredPrivateKeyFlagValue(cmd *cobra.Command) (*string, error) {
 
 func GetSilentDataAuthFlagValue(cmd *cobra.Command) bool {
 	flag := cmd.Flag(silentDataAuthFlagName)
+	if flag == nil {
+		return false
+	}
+	return flag.Value.String() == "true"
+}
+
+func GetInsecureSkipTLSFlagValue(cmd *cobra.Command) bool {
+	flag := cmd.Flag(insecureSkipTLSFlagName)
 	if flag == nil {
 		return false
 	}

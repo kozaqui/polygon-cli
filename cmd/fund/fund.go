@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"net/http"
 	"os"
 	"strings"
 	"time"
+
+	"crypto/tls"
 
 	"github.com/0xPolygon/polygon-cli/bindings/funder"
 	"github.com/0xPolygon/polygon-cli/cmd/flag_loader"
@@ -19,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/ethereum/go-ethereum/rpc"
+	rpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -97,9 +100,31 @@ func dialRpc(ctx context.Context, cmd *cobra.Command) (*ethclient.Client, error)
 			log.Error().Err(err).Msg("Unable to process the private key for Silent Data auth")
 			return nil, err
 		}
-		return util.CreateEthClientWithSilentDataAuth(ctx, *params.RpcUrl, privateKey)
+
+		insecureSkipTLS := flag_loader.GetInsecureSkipTLSFlagValue(cmd)
+
+		return util.CreateEthClientWithSilentDataAuthAndTLS(ctx, *params.RpcUrl, privateKey, insecureSkipTLS)
 	}
-	
+
+	insecureSkipTLS := flag_loader.GetInsecureSkipTLSFlagValue(cmd)
+	if insecureSkipTLS {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		transport.TLSClientConfig = &tls.Config{
+			InsecureSkipVerify: true,
+		}
+		httpClient := &http.Client{Transport: transport}
+		log.Debug().Msg("TLS certificate verification disabled (insecure mode)")
+		
+		rpcOption := rpc.WithHTTPClient(httpClient)
+		rpcClient, err := rpc.DialOptions(ctx, *params.RpcUrl, rpcOption)
+		if err != nil {
+			log.Error().Err(err).Msg("Unable to dial rpc")
+			return nil, err
+		}
+		rpcClient.SetHeader("Accept-Encoding", "identity")
+		return ethclient.NewClient(rpcClient), nil
+	}
+
 	rpc, err := rpc.DialContext(ctx, *params.RpcUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Unable to dial")
