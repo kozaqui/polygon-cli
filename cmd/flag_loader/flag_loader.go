@@ -2,15 +2,16 @@ package flag_loader
 
 import (
 	"fmt"
-	"os"
 	"math/big"
+	"os"
 
 	"github.com/spf13/cobra"
 )
 
 const (
-	rpcUrlFlagName, rpcUrlEnvVar         = "rpc-url", "ETH_RPC_URL"
-	privateKeyFlagName, privateKeyEnvVar = "private-key", "PRIVATE_KEY"
+	rpcUrlFlagName, rpcUrlEnvVar               = "rpc-url", "ETH_RPC_URL"
+	privateKeyFlagName, privateKeyEnvVar       = "private-key", "PRIVATE_KEY"
+	silentDataAuthFlagName                     = "use-silent-data-auth"
 )
 
 type BigIntValue struct {
@@ -50,6 +51,14 @@ func GetPrivateKeyFlagValue(cmd *cobra.Command) *string {
 
 func GetRequiredPrivateKeyFlagValue(cmd *cobra.Command) (*string, error) {
 	return getFlagValue(cmd, privateKeyFlagName, privateKeyEnvVar, true)
+}
+
+func GetSilentDataAuthFlagValue(cmd *cobra.Command) bool {
+	flag := cmd.Flag(silentDataAuthFlagName)
+	if flag == nil {
+		return false
+	}
+	return flag.Value.String() == "true"
 }
 
 func getFlagValue(cmd *cobra.Command, flagName, envVarName string, required bool) (*string, error) {
