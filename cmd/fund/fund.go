@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/polygon-cli/bindings/funder"
+	"github.com/0xPolygon/polygon-cli/cmd/flag_loader"
 	"github.com/0xPolygon/polygon-cli/hdwallet"
 	"github.com/0xPolygon/polygon-cli/util"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -20,17 +21,18 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 )
 
 // runFunding deploys or instantiates a `Funder` contract to bulk fund randomly generated wallets.
 // Wallets' addresses and private keys are saved to a file.
-func runFunding(ctx context.Context) error {
+func runFunding(ctx context.Context, cmd *cobra.Command) error {
 	log.Info().Msg("Starting bulk funding wallets")
 	log.Trace().Interface("params", params).Msg("Input parameters")
 	startTime := time.Now()
 
 	// Set up the environment.
-	c, err := dialRpc(ctx)
+	c, err := dialRpc(ctx, cmd)
 	if err != nil {
 		return err
 	}
@@ -86,7 +88,18 @@ func runFunding(ctx context.Context) error {
 }
 
 // dialRpc dials the Ethereum RPC server and return an Ethereum client.
-func dialRpc(ctx context.Context) (*ethclient.Client, error) {
+func dialRpc(ctx context.Context, cmd *cobra.Command) (*ethclient.Client, error) {
+	useSilentDataAuth := flag_loader.GetSilentDataAuthFlagValue(cmd)
+	if useSilentDataAuth {
+		trimmedHexPrivateKey := strings.TrimPrefix(*params.PrivateKey, "0x")
+		privateKey, err := crypto.HexToECDSA(trimmedHexPrivateKey)
+		if err != nil {
+			log.Error().Err(err).Msg("Unable to process the private key for Silent Data auth")
+			return nil, err
+		}
+		return util.CreateEthClientWithSilentDataAuth(ctx, *params.RpcUrl, privateKey)
+	}
+	
 	rpc, err := rpc.DialContext(ctx, *params.RpcUrl)
 	if err != nil {
 		log.Error().Err(err).Msg("Unable to dial")

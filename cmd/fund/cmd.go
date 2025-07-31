@@ -54,7 +54,7 @@ var FundCmd = &cobra.Command{
 		return checkFlags()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runFunding(cmd.Context())
+		return runFunding(cmd.Context(), cmd)
 	},
 }
 

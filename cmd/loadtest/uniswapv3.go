@@ -39,7 +39,7 @@ var uniswapV3LoadTestCmd = &cobra.Command{
 		inputLoadTestParams.Modes = &[]string{"v3"}
 
 		// Run load test.
-		err := runLoadTest(cmd.Context())
+		err := runLoadTest(cmd.Context(), cmd)
 		if err != nil {
 			return err
 		}

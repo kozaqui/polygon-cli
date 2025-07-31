@@ -27,12 +27,12 @@ import (
 
 	"github.com/0xPolygon/polygon-cli/bindings/tester"
 	"github.com/0xPolygon/polygon-cli/bindings/tokens"
+	"github.com/0xPolygon/polygon-cli/cmd/flag_loader"
 	uniswapv3loadtest "github.com/0xPolygon/polygon-cli/cmd/loadtest/uniswapv3"
 
 	"github.com/0xPolygon/polygon-cli/abi"
 	"github.com/0xPolygon/polygon-cli/rpctypes"
 	"github.com/0xPolygon/polygon-cli/util"
-
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	ethcommon "github.com/ethereum/go-ethereum/common"
@@ -41,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	ethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
 	"golang.org/x/time/rate"
 )
 
@@ -499,7 +500,7 @@ func completeLoadTest(ctx context.Context, c *ethclient.Client, rpc *ethrpc.Clie
 // runLoadTest initiates and runs the entire load test process, including initialization,
 // the main load test loop, and the completion steps. It takes a context for cancellation signals.
 // The function returns an error if there are issues during the load test process.
-func runLoadTest(ctx context.Context) error {
+func runLoadTest(ctx context.Context, cmd *cobra.Command) error {
 	log.Info().Msg("Starting Load Test")
 
 	// Configure the overall time limit for the load test.
@@ -533,6 +534,7 @@ func runLoadTest(ctx context.Context) error {
 	goHttpClient := &http.Client{
 		Transport: transport,
 	}
+	
 	rpcOption := ethrpc.WithHTTPClient(goHttpClient)
 	rpc, err := ethrpc.DialOptions(ctx, *inputLoadTestParams.RPCUrl, rpcOption)
 	if err != nil {
@@ -541,6 +543,7 @@ func runLoadTest(ctx context.Context) error {
 	}
 	defer rpc.Close()
 	rpc.SetHeader("Accept-Encoding", "identity")
+	
 	ec := ethclient.NewClient(rpc)
 
 	// Define the main loop function.
@@ -550,6 +553,31 @@ func runLoadTest(ctx context.Context) error {
 		if err = initializeLoadTestParams(ctx, ec); err != nil {
 			log.Error().Err(err).Msg("Error initializing load test parameters")
 			return err
+		}
+		
+		useSilentDataAuth := flag_loader.GetSilentDataAuthFlagValue(cmd)
+		if useSilentDataAuth {
+			// Close the existing RPC client
+			rpc.Close()
+			
+			// Create new authenticated RPC client
+			authenticatedClient, authErr := util.CreateRPCClientWithSilentDataAuth(ctx, *inputLoadTestParams.RPCUrl, inputLoadTestParams.ECDSAPrivateKey)
+			if authErr != nil {
+				log.Error().Err(authErr).Msg("Failed to create authenticated RPC client")
+				return authErr
+			}
+			
+			// Update rpc and ec to use the authenticated client
+			rpc = authenticatedClient
+			ec = ethclient.NewClient(rpc)
+			
+			// Update the AccountPool to use the authenticated client and refresh nonces
+			accountPool.UpdateClient(ec)
+			err = accountPool.RefreshNonce(ctx, *inputLoadTestParams.FromETHAddress)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to refresh nonce with authenticated client")
+				return err
+			}
 		}
 
 		if err = mainLoop(ctx, ec, rpc); err != nil {
@@ -644,7 +672,7 @@ func updateRateLimit(ctx context.Context, rl *rate.Limiter, rpc *ethrpc.Client, 
 					break
 				}
 
-				txPoolSize = pendingTxs
+				txPoolSize = pendingTxs + queuedTxs
 			} else {
 				txPoolSize = pendingTxs + queuedTxs
 			}

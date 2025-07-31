@@ -74,6 +74,14 @@ func (a *Account) Nonce(ctx context.Context) uint64 {
 	return a.nonce
 }
 
+// UpdateClient updates the AccountPool's client to use a new authenticated client
+func (ap *AccountPool) UpdateClient(newClient *ethclient.Client) {
+	ap.mu.Lock()
+	defer ap.mu.Unlock()
+	ap.client = newClient
+	log.Debug().Msg("AccountPool client updated for Silent Data authentication")
+}
+
 // Structure to control accounts used by the tests
 type AccountPool struct {
 	accounts          []Account

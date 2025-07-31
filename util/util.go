@@ -2,8 +2,12 @@ package util
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"reflect"
 	"strconv"
 	"strings"
@@ -366,4 +370,82 @@ func GetHexString(data any) string {
 		result = "0" + result
 	}
 	return strings.ToLower(result)
+}
+
+// SilentDataTransport adds Silent Data authentication headers to JSON-RPC requests
+type SilentDataTransport struct {
+	PrivateKey *ecdsa.PrivateKey
+	Transport  http.RoundTripper
+}
+
+func (t *SilentDataTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.Header.Get("Content-Type") == "application/json" && req.Method == "POST" {
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read request body: %w", err)
+		}
+		req.Body = io.NopCloser(strings.NewReader(string(body)))
+		timestamp := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
+		
+		messageToSign := string(body) + timestamp
+		
+		messageHash := ethcrypto.Keccak256Hash([]byte(fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(messageToSign), messageToSign)))
+		signature, err := ethcrypto.Sign(messageHash.Bytes(), t.PrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign message: %w", err)
+		}
+		signatureHex := fmt.Sprintf("0x%s", hex.EncodeToString(signature))
+		
+		req.Header.Set("x-timestamp", timestamp)
+		req.Header.Set("x-signature", signatureHex)
+		log.Debug().
+			Str("timestamp", timestamp).
+			Str("signature", signatureHex).
+			Str("message", messageToSign).
+			Msg("Added Silent Data authentication headers")
+	}
+	
+	return t.Transport.RoundTrip(req)
+}
+
+// CreateSilentDataHTTPClient creates an HTTP client with Silent Data authentication
+func CreateSilentDataHTTPClient(privateKey *ecdsa.PrivateKey, baseTransport http.RoundTripper) *http.Client {
+	if baseTransport == nil {
+		baseTransport = http.DefaultTransport
+	}
+	
+	authenticatedTransport := &SilentDataTransport{
+		PrivateKey: privateKey,
+		Transport:  baseTransport,
+	}
+	
+	return &http.Client{
+		Transport: authenticatedTransport,
+	}
+}
+
+// CreateRPCClientWithSilentDataAuth creates an RPC client with Silent Data authentication
+func CreateRPCClientWithSilentDataAuth(ctx context.Context, rpcURL string, privateKey *ecdsa.PrivateKey) (*ethrpc.Client, error) {
+	httpClient := CreateSilentDataHTTPClient(privateKey, nil)
+	rpcOption := ethrpc.WithHTTPClient(httpClient)
+	
+	rpc, err := ethrpc.DialOptions(ctx, rpcURL, rpcOption)
+	if err != nil {
+		return nil, fmt.Errorf("unable to dial RPC: %w", err)
+	}
+	
+	rpc.SetHeader("Accept-Encoding", "identity")
+	log.Info().Msg("Using Silent Data authentication headers")
+	
+	return rpc, nil
+}
+
+// CreateEthClientWithSilentDataAuth creates an Ethereum client with Silent Data authentication
+func CreateEthClientWithSilentDataAuth(ctx context.Context, rpcURL string, privateKey *ecdsa.PrivateKey) (*ethclient.Client, error) {
+	rpc, err := CreateRPCClientWithSilentDataAuth(ctx, rpcURL, privateKey)
+	if err != nil {
+		return nil, err
+	}
+	
+	return ethclient.NewClient(rpc), nil
 }

@@ -88,7 +88,7 @@ type (
 		KeepFundedAmount              *bool
 		SendingAddressesFile          *string
 		Proxy                         *string
-
+		
 		// Computed
 		CurrentGasPrice       *big.Int
 		CurrentGasTipCap      *big.Int
@@ -184,7 +184,7 @@ var LoadtestCmd = &cobra.Command{
 		return checkLoadtestFlags()
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return runLoadTest(cmd.Context())
+		return runLoadTest(cmd.Context(), cmd)
 	},
 }
 
